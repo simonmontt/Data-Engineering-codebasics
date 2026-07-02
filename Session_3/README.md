@@ -4,6 +4,8 @@ Production-style Python refactor for the Loafly orders challenge.
 
 ## Python used: version 13.0
 
+## The pipeline writes logs to loafly_pipeline.log.
+
 ## Setup
 
 Create a virtual environment:
@@ -22,7 +24,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-# Copy env.example .env
+# Copy env.example .env and put you API Key there
 ```bash 
 copy env.example .env
 ```
