@@ -1,7 +1,8 @@
 # Loafly Orders Pipeline
 
 Production-style Python refactor for the Loafly orders challenge.
-**Python used: versionn 13.0**
+
+## Python used: versionn 13.0
 
 ## Setup
 
