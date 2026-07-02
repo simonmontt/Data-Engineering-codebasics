@@ -8,7 +8,7 @@ Production-style Python refactor for the Loafly orders challenge.
 
 ## Setup
 
-Create a virtual environment:
+Create a virtual environment in the folder you have this code (for example in this repo is inside Session_3)
 
 ```bash
 python -m venv .venv
