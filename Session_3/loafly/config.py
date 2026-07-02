@@ -1,0 +1,11 @@
+RAW_ORDERS_PATH = "raw_orders.csv"
+DISCOUNT_PERCENT = 10
+CURRENCY = "INR"
+
+RETRY_COUNT = 3
+RETRY_WAIT_SECONDS = 1
+
+LOG_FILE_PATH = "loafly_pipeline.log"
+
+ENV_FILE_PATH = ".env"
+API_KEY_ENV_VAR = "LOAFLY_API_KEY"

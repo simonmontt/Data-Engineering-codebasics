@@ -1,0 +1,6 @@
+.env
+.venvSMDEB/
+__pycache__/
+*.pyc
+loafly_pipeline.log
+legacy_orders.py
