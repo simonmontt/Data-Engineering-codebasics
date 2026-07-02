@@ -29,6 +29,7 @@ pip install -r requirements.txt
 copy env.example .env
 ```
 
+# Run the pipeline
 
 ```bash 
 python run_pipeline.py
