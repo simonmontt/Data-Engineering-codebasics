@@ -1,0 +1,6 @@
+.env
+.venvSMDEB/
+__pycache__/
+*.pyc
+offline_books.json
+sales.csv
