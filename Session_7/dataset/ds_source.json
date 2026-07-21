@@ -6,12 +6,17 @@
 			"referenceName": "ls_staynest_storage",
 			"type": "LinkedServiceReference"
 		},
+		"parameters": {
+			"fileName": {
+				"type": "string"
+			}
+		},
 		"annotations": [],
 		"type": "DelimitedText",
 		"typeProperties": {
 			"location": {
 				"type": "AzureBlobFSLocation",
-				"fileName": "hotels.csv",
+				"fileName": "@dataset().fileName",
 				"folderPath": "raw",
 				"fileSystem": "staynest"
 			},
