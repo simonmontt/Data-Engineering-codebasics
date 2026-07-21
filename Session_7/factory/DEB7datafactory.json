@@ -1,0 +1,15 @@
+{
+	"name": "DEB7datafactory",
+	"properties": {
+		"trustModeClaimForMi": {
+			"value": "Disabled",
+			"editable": true
+		}
+	},
+	"location": "chilecentral",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "fdaf7eb2-4fd7-4096-9bb2-cbda5514d045",
+		"tenantId": "ec437739-30fd-4b52-b031-ca1be85226dd"
+	}
+}
