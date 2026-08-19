@@ -1,0 +1,1017 @@
+{
+    "name": "pl_bronze_metadata_ingestion",
+    "properties": {
+        "activities": [
+            {
+                "name": "Set_Run_Start_At",
+                "type": "SetVariable",
+                "dependsOn": [],
+                "policy": {
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "variableName": "run_start_at",
+                    "value": {
+                        "value": "@utcnow()",
+                        "type": "Expression"
+                    }
+                }
+            },
+            {
+                "name": "Lookup_Control_Table",
+                "type": "Lookup",
+                "dependsOn": [
+                    {
+                        "activity": "Audit_Start",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None"
+                    },
+                    "dataset": {
+                        "referenceName": "ds_sql_source",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "source_schema": "etl",
+                            "table_name": "control_table"
+                        }
+                    },
+                    "firstRowOnly": false
+                }
+            },
+            {
+                "name": "ForEach_Control_Rows",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "Lookup_Control_Table",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "items": {
+                        "value": "@activity('Lookup_Control_Table').output.value",
+                        "type": "Expression"
+                    },
+                    "isSequential": true,
+                    "activities": [
+                        {
+                            "name": "If Condition1",
+                            "type": "IfCondition",
+                            "dependsOn": [],
+                            "userProperties": [],
+                            "typeProperties": {
+                                "expression": {
+                                    "value": "@equals(toLower(item().load_type), 'incremental')",
+                                    "type": "Expression"
+                                },
+                                "ifFalseActivities": [
+                                    {
+                                        "name": "Delete_Full_Snapshot",
+                                        "type": "Delete",
+                                        "dependsOn": [],
+                                        "policy": {
+                                            "timeout": "0.12:00:00",
+                                            "retry": 0,
+                                            "retryIntervalInSeconds": 30,
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "userProperties": [],
+                                        "typeProperties": {
+                                            "dataset": {
+                                                "referenceName": "ds_adls_bronze_parquet",
+                                                "type": "DatasetReference",
+                                                "parameters": {
+                                                    "table_name": "@item().table_name",
+                                                    "folder_path": "@concat('bronze/', item().table_name)"
+                                                }
+                                            },
+                                            "logStorageSettings": {
+                                                "linkedServiceName": {
+                                                    "referenceName": "ls_adls_atliq",
+                                                    "type": "LinkedServiceReference"
+                                                }
+                                            },
+                                            "enableLogging": true,
+                                            "storeSettings": {
+                                                "type": "AzureBlobFSReadSettings",
+                                                "recursive": true,
+                                                "enablePartitionDiscovery": false
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "Copy_Full_Table",
+                                        "type": "Copy",
+                                        "dependsOn": [
+                                            {
+                                                "activity": "Delete_Full_Snapshot",
+                                                "dependencyConditions": [
+                                                    "Succeeded"
+                                                ]
+                                            }
+                                        ],
+                                        "policy": {
+                                            "timeout": "0.12:00:00",
+                                            "retry": 0,
+                                            "retryIntervalInSeconds": 30,
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "userProperties": [],
+                                        "typeProperties": {
+                                            "source": {
+                                                "type": "AzureSqlSource",
+                                                "queryTimeout": "02:00:00",
+                                                "partitionOption": "None"
+                                            },
+                                            "sink": {
+                                                "type": "ParquetSink",
+                                                "storeSettings": {
+                                                    "type": "AzureBlobFSWriteSettings"
+                                                },
+                                                "formatSettings": {
+                                                    "type": "ParquetWriteSettings"
+                                                }
+                                            },
+                                            "enableStaging": false,
+                                            "translator": {
+                                                "type": "TabularTranslator",
+                                                "typeConversion": true,
+                                                "typeConversionSettings": {
+                                                    "allowDataTruncation": true,
+                                                    "treatBooleanAsNumber": false
+                                                }
+                                            }
+                                        },
+                                        "inputs": [
+                                            {
+                                                "referenceName": "ds_sql_source",
+                                                "type": "DatasetReference",
+                                                "parameters": {
+                                                    "source_schema": "@item().source_schema",
+                                                    "table_name": "@item().table_name"
+                                                }
+                                            }
+                                        ],
+                                        "outputs": [
+                                            {
+                                                "referenceName": "ds_adls_bronze_parquet",
+                                                "type": "DatasetReference",
+                                                "parameters": {
+                                                    "table_name": "@item().table_name",
+                                                    "folder_path": "@concat('bronze/', item().table_name)"
+                                                }
+                                            }
+                                        ]
+                                    }
+                                ],
+                                "ifTrueActivities": [
+                                    {
+                                        "name": "Delete_Current_Batch",
+                                        "type": "Delete",
+                                        "dependsOn": [],
+                                        "policy": {
+                                            "timeout": "0.12:00:00",
+                                            "retry": 0,
+                                            "retryIntervalInSeconds": 30,
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "userProperties": [],
+                                        "typeProperties": {
+                                            "dataset": {
+                                                "referenceName": "ds_adls_bronze_parquet",
+                                                "type": "DatasetReference",
+                                                "parameters": {
+                                                    "table_name": "@item().table_name",
+                                                    "folder_path": {
+                                                        "value": "@concat(\n    'bronze/',\n    item().table_name,\n    '/ingest_date=',\n    formatDateTime(variables('run_start_at'),'yyyy-MM-dd')\n)",
+                                                        "type": "Expression"
+                                                    }
+                                                }
+                                            },
+                                            "logStorageSettings": {
+                                                "linkedServiceName": {
+                                                    "referenceName": "ls_adls_atliq",
+                                                    "type": "LinkedServiceReference"
+                                                }
+                                            },
+                                            "enableLogging": true,
+                                            "storeSettings": {
+                                                "type": "AzureBlobFSReadSettings",
+                                                "recursive": true,
+                                                "enablePartitionDiscovery": false
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "Copy_Incremental_Table",
+                                        "type": "Copy",
+                                        "dependsOn": [
+                                            {
+                                                "activity": "Delete_Current_Batch",
+                                                "dependencyConditions": [
+                                                    "Succeeded"
+                                                ]
+                                            }
+                                        ],
+                                        "policy": {
+                                            "timeout": "0.12:00:00",
+                                            "retry": 0,
+                                            "retryIntervalInSeconds": 30,
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "userProperties": [],
+                                        "typeProperties": {
+                                            "source": {
+                                                "type": "AzureSqlSource",
+                                                "sqlReaderQuery": {
+                                                    "value": "@concat(\n    'SELECT * FROM [',\n    item().source_schema,\n    '].[', \n    item().table_name,\n    '] WHERE [',\n    item().watermark_column,\n    '] > ''',\n    item().last_loaded_at,\n    ''''\n)",
+                                                    "type": "Expression"
+                                                },
+                                                "queryTimeout": "02:00:00",
+                                                "partitionOption": "None"
+                                            },
+                                            "sink": {
+                                                "type": "ParquetSink",
+                                                "storeSettings": {
+                                                    "type": "AzureBlobFSWriteSettings"
+                                                },
+                                                "formatSettings": {
+                                                    "type": "ParquetWriteSettings"
+                                                }
+                                            },
+                                            "enableStaging": false,
+                                            "translator": {
+                                                "type": "TabularTranslator",
+                                                "typeConversion": true,
+                                                "typeConversionSettings": {
+                                                    "allowDataTruncation": true,
+                                                    "treatBooleanAsNumber": false
+                                                }
+                                            }
+                                        },
+                                        "inputs": [
+                                            {
+                                                "referenceName": "ds_sql_source",
+                                                "type": "DatasetReference",
+                                                "parameters": {
+                                                    "source_schema": "@item().source_schema",
+                                                    "table_name": "@item().table_name"
+                                                }
+                                            }
+                                        ],
+                                        "outputs": [
+                                            {
+                                                "referenceName": "ds_adls_bronze_parquet",
+                                                "type": "DatasetReference",
+                                                "parameters": {
+                                                    "table_name": "@item().table_name",
+                                                    "folder_path": "@concat(     'bronze/',     item().table_name,     '/ingest_date=',     formatDateTime(variables('run_start_at'),'yyyy-MM-dd') )"
+                                                }
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "name": "Update_Watermark",
+                                        "type": "SqlServerStoredProcedure",
+                                        "dependsOn": [
+                                            {
+                                                "activity": "Copy_Incremental_Table",
+                                                "dependencyConditions": [
+                                                    "Succeeded"
+                                                ]
+                                            }
+                                        ],
+                                        "policy": {
+                                            "timeout": "0.12:00:00",
+                                            "retry": 0,
+                                            "retryIntervalInSeconds": 30,
+                                            "secureOutput": false,
+                                            "secureInput": false
+                                        },
+                                        "userProperties": [],
+                                        "typeProperties": {
+                                            "storedProcedureName": "[etl].[usp_update_watermark]",
+                                            "storedProcedureParameters": {
+                                                "run_start_at": {
+                                                    "value": {
+                                                        "value": "@variables('run_start_at')",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "DateTime"
+                                                },
+                                                "table_name": {
+                                                    "value": {
+                                                        "value": "@item().table_name",
+                                                        "type": "Expression"
+                                                    },
+                                                    "type": "String"
+                                                }
+                                            }
+                                        },
+                                        "linkedServiceName": {
+                                            "referenceName": "ls_azuresql_atliq",
+                                            "type": "LinkedServiceReference"
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Delete_Supplier_Bronze",
+                "type": "Delete",
+                "dependsOn": [
+                    {
+                        "activity": "ForEach_Control_Rows",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "dataset": {
+                        "referenceName": "ds_adls_bronze_parquet",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "table_name": "supplier_price_list",
+                            "folder_path": "bronze/supplier_price_list"
+                        }
+                    },
+                    "logStorageSettings": {
+                        "linkedServiceName": {
+                            "referenceName": "ls_adls_atliq",
+                            "type": "LinkedServiceReference"
+                        }
+                    },
+                    "enableLogging": true,
+                    "storeSettings": {
+                        "type": "AzureBlobFSReadSettings",
+                        "recursive": true,
+                        "enablePartitionDiscovery": false
+                    }
+                }
+            },
+            {
+                "name": "Copy_Supplier_CSV",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "Delete_Supplier_Bronze",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "DelimitedTextSource",
+                        "storeSettings": {
+                            "type": "AzureBlobFSReadSettings",
+                            "recursive": true,
+                            "enablePartitionDiscovery": false
+                        },
+                        "formatSettings": {
+                            "type": "DelimitedTextReadSettings"
+                        }
+                    },
+                    "sink": {
+                        "type": "ParquetSink",
+                        "storeSettings": {
+                            "type": "AzureBlobFSWriteSettings"
+                        },
+                        "formatSettings": {
+                            "type": "ParquetWriteSettings"
+                        }
+                    },
+                    "enableStaging": false,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                },
+                "inputs": [
+                    {
+                        "referenceName": "ds_adls_csv_source",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "file_name": "supplier_price_list.csv"
+                        }
+                    }
+                ],
+                "outputs": [
+                    {
+                        "referenceName": "ds_adls_bronze_parquet",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "table_name": "supplier_price_list",
+                            "folder_path": "bronze/supplier_price_list"
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "Delete_Marketing_Bronze",
+                "type": "Delete",
+                "dependsOn": [
+                    {
+                        "activity": "Copy_Supplier_CSV",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "dataset": {
+                        "referenceName": "ds_adls_bronze_parquet",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "table_name": "marketing_spend",
+                            "folder_path": "bronze/marketing_spend"
+                        }
+                    },
+                    "logStorageSettings": {
+                        "linkedServiceName": {
+                            "referenceName": "ls_adls_atliq",
+                            "type": "LinkedServiceReference"
+                        }
+                    },
+                    "enableLogging": true,
+                    "storeSettings": {
+                        "type": "AzureBlobFSReadSettings",
+                        "recursive": true,
+                        "enablePartitionDiscovery": false
+                    }
+                }
+            },
+            {
+                "name": "Copy_Marketing_CSV",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "Delete_Marketing_Bronze",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "DelimitedTextSource",
+                        "storeSettings": {
+                            "type": "AzureBlobFSReadSettings",
+                            "recursive": true,
+                            "enablePartitionDiscovery": false
+                        },
+                        "formatSettings": {
+                            "type": "DelimitedTextReadSettings"
+                        }
+                    },
+                    "sink": {
+                        "type": "ParquetSink",
+                        "storeSettings": {
+                            "type": "AzureBlobFSWriteSettings"
+                        },
+                        "formatSettings": {
+                            "type": "ParquetWriteSettings"
+                        }
+                    },
+                    "enableStaging": false,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                },
+                "inputs": [
+                    {
+                        "referenceName": "ds_adls_csv_source",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "file_name": "marketing_spend.csv"
+                        }
+                    }
+                ],
+                "outputs": [
+                    {
+                        "referenceName": "ds_adls_bronze_parquet",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "table_name": "marketing_spend",
+                            "folder_path": "bronze/marketing_spend"
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "job_atliq_silver",
+                "type": "DatabricksJob",
+                "dependsOn": [
+                    {
+                        "activity": "Copy_Marketing_CSV",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "jobId": "818762846714781",
+                    "jobParameters": {
+                        "run_date": {
+                            "value": "@formatDateTime(\n    variables('run_start_at'),\n    'yyyy-MM-dd'\n)",
+                            "type": "Expression"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_databricks_atliq",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "Audit_Start",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Set_Run_Start_At",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[etl].[usp_pipeline_audit_start]",
+                    "storedProcedureParameters": {
+                        "pipeline_name": {
+                            "value": {
+                                "value": "@pipeline().Pipeline",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "run_id": {
+                            "value": {
+                                "value": "@pipeline().RunId",
+                                "type": "Expression"
+                            },
+                            "type": "Guid"
+                        },
+                        "run_start_at": {
+                            "value": "@variables('run_start_at')",
+                            "type": "DateTime"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_azuresql_atliq",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "Get_Audit_Row_Counts",
+                "type": "Lookup",
+                "dependsOn": [
+                    {
+                        "activity": "job_atliq_silver",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderQuery": "SELECT\n    (SELECT COUNT_BIG(*) FROM dbo.customers) AS customers_rows,\n    (SELECT COUNT_BIG(*) FROM dbo.products) AS products_rows,\n    (SELECT COUNT_BIG(*) FROM dbo.orders) AS orders_rows,\n    (SELECT COUNT_BIG(*) FROM dbo.order_items) AS order_items_rows,\n    (SELECT COUNT_BIG(*) FROM dbo.payments) AS payments_rows;",
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None"
+                    },
+                    "dataset": {
+                        "referenceName": "ds_sql_source",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "source_schema": "dbo",
+                            "table_name": "customers"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "Audit_Success",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Get_Audit_Row_Counts",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[etl].[usp_pipeline_audit_success]",
+                    "storedProcedureParameters": {
+                        "customers_rows": {
+                            "value": {
+                                "value": "@activity('Get_Audit_Row_Counts').output.firstRow.customers_rows",
+                                "type": "Expression"
+                            },
+                            "type": "Int64"
+                        },
+                        "order_items_rows": {
+                            "value": {
+                                "value": "@activity('Get_Audit_Row_Counts').output.firstRow.order_items_rows",
+                                "type": "Expression"
+                            },
+                            "type": "Int64"
+                        },
+                        "orders_rows": {
+                            "value": {
+                                "value": "@activity('Get_Audit_Row_Counts').output.firstRow.orders_rows",
+                                "type": "Expression"
+                            },
+                            "type": "Int64"
+                        },
+                        "payments_rows": {
+                            "value": {
+                                "value": "@activity('Get_Audit_Row_Counts').output.firstRow.payments_rows",
+                                "type": "Expression"
+                            },
+                            "type": "Int64"
+                        },
+                        "products_rows": {
+                            "value": {
+                                "value": "@activity('Get_Audit_Row_Counts').output.firstRow.products_rows",
+                                "type": "Expression"
+                            },
+                            "type": "Int64"
+                        },
+                        "run_id": {
+                            "value": {
+                                "value": "@pipeline().RunId",
+                                "type": "Expression"
+                            },
+                            "type": "Guid"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_azuresql_atliq",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "Audit_Failure_Lookup",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Lookup_Control_Table",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[etl].[usp_pipeline_audit_failure]",
+                    "storedProcedureParameters": {
+                        "run_id": {
+                            "value": "@pipeline().RunId",
+                            "type": "Guid"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_azuresql_atliq",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "Fail_Lookup_Table",
+                "type": "Fail",
+                "dependsOn": [
+                    {
+                        "activity": "Audit_Failure_Lookup",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "message": "Lookup_Control_Table Failed",
+                    "errorCode": "ATLIQ_PIPELINE_FAILURE"
+                }
+            },
+            {
+                "name": "Audit_Failure_Lookup_ForEach",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "ForEach_Control_Rows",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[etl].[usp_pipeline_audit_failure]",
+                    "storedProcedureParameters": {
+                        "run_id": {
+                            "value": "@pipeline().RunId",
+                            "type": "Guid"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_azuresql_atliq",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "Fail_Lookup_Table_ForEach",
+                "type": "Fail",
+                "dependsOn": [
+                    {
+                        "activity": "Audit_Failure_Lookup_ForEach",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "message": "Lookup_Control_Table_ForEach failed",
+                    "errorCode": "ATLIQ_PIPELINE_FAILURE"
+                }
+            },
+            {
+                "name": "Audit_Failure_Copy_Supplier",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Copy_Supplier_CSV",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[etl].[usp_pipeline_audit_failure]",
+                    "storedProcedureParameters": {
+                        "run_id": {
+                            "value": "@pipeline().RunId",
+                            "type": "Guid"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_azuresql_atliq",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "Fail_Copy_Supplier",
+                "type": "Fail",
+                "dependsOn": [
+                    {
+                        "activity": "Audit_Failure_Copy_Supplier",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "message": "Copy_Supplier Failed",
+                    "errorCode": "ATLIQ_PIPELINE_FAILURE"
+                }
+            },
+            {
+                "name": "Audit_Failure_Copy_Marketing",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Copy_Marketing_CSV",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[etl].[usp_pipeline_audit_failure]",
+                    "storedProcedureParameters": {
+                        "run_id": {
+                            "value": "@pipeline().RunId",
+                            "type": "Guid"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_azuresql_atliq",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "Fail_Copy_Marketing",
+                "type": "Fail",
+                "dependsOn": [
+                    {
+                        "activity": "Audit_Failure_Copy_Marketing",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "message": "Copy_Marketing Failed",
+                    "errorCode": "ATLIQ_PIPELINE_FAILURE"
+                }
+            },
+            {
+                "name": "Audit_Failure_Databricks_Silver",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "job_atliq_silver",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[etl].[usp_pipeline_audit_failure]",
+                    "storedProcedureParameters": {
+                        "run_id": {
+                            "value": "@pipeline().RunId",
+                            "type": "Guid"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_azuresql_atliq",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "Fail_Databricks_Silver",
+                "type": "Fail",
+                "dependsOn": [
+                    {
+                        "activity": "Audit_Failure_Databricks_Silver",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "message": "Databricks_Silver Failed",
+                    "errorCode": "ATLIQ_PIPELINE_FAILURE"
+                }
+            }
+        ],
+        "variables": {
+            "run_start_at": {
+                "type": "String"
+            }
+        },
+        "annotations": [],
+        "lastPublishTime": "2026-08-17T16:21:23Z"
+    },
+    "type": "Microsoft.DataFactory/factories/pipelines"
+}
