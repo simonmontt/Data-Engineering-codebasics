@@ -1,0 +1,30 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "factoryName": {
+            "value": "atliqdatafactory"
+        },
+        "ls_azuresql_atliq_password": {
+            "value": ""
+        },
+        "ls_azuresql_atliq_properties_typeProperties_server": {
+            "value": "atliqserver.database.windows.net"
+        },
+        "ls_azuresql_atliq_properties_typeProperties_database": {
+            "value": "atliq_commerce"
+        },
+        "ls_azuresql_atliq_properties_typeProperties_userName": {
+            "value": "CloudSA6494686c"
+        },
+        "ls_adls_atliq_properties_typeProperties_url": {
+            "value": "https://atliqstorage.dfs.core.windows.net/"
+        },
+        "containerUri": {
+            "value": ""
+        },
+        "containerSasToken": {
+            "value": ""
+        }
+    }
+}

@@ -1,0 +1,855 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "factoryName": {
+            "type": "string",
+            "metadata": "Data Factory name",
+            "defaultValue": "atliqdatafactory"
+        },
+        "ls_azuresql_atliq_password": {
+            "type": "secureString",
+            "metadata": "Secure string for 'password' of 'ls_azuresql_atliq'"
+        },
+        "ls_azuresql_atliq_properties_typeProperties_server": {
+            "type": "string",
+            "defaultValue": "atliqserver.database.windows.net"
+        },
+        "ls_azuresql_atliq_properties_typeProperties_database": {
+            "type": "string",
+            "defaultValue": "atliq_commerce"
+        },
+        "ls_azuresql_atliq_properties_typeProperties_userName": {
+            "type": "string",
+            "defaultValue": "CloudSA6494686c"
+        },
+        "ls_adls_atliq_properties_typeProperties_url": {
+            "type": "string",
+            "defaultValue": "https://atliqstorage.dfs.core.windows.net/"
+        }
+    },
+    "variables": {
+        "factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]"
+    },
+    "resources": [
+        {
+            "name": "[concat(parameters('factoryName'), '/pl_bronze_metadata_ingestion')]",
+            "type": "Microsoft.DataFactory/factories/pipelines",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "activities": [
+                    {
+                        "name": "Set_Run_Start_At",
+                        "type": "SetVariable",
+                        "dependsOn": [],
+                        "policy": {
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "variableName": "run_start_at",
+                            "value": {
+                                "value": "@utcnow()",
+                                "type": "Expression"
+                            }
+                        }
+                    },
+                    {
+                        "name": "Lookup_Control_Table",
+                        "type": "Lookup",
+                        "dependsOn": [
+                            {
+                                "activity": "Set_Run_Start_At",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "policy": {
+                            "timeout": "0.12:00:00",
+                            "retry": 0,
+                            "retryIntervalInSeconds": 30,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "source": {
+                                "type": "AzureSqlSource",
+                                "queryTimeout": "02:00:00",
+                                "partitionOption": "None"
+                            },
+                            "dataset": {
+                                "referenceName": "ds_sql_source",
+                                "type": "DatasetReference",
+                                "parameters": {
+                                    "source_schema": "etl",
+                                    "table_name": "control_table"
+                                }
+                            },
+                            "firstRowOnly": false
+                        }
+                    },
+                    {
+                        "name": "ForEach_Control_Rows",
+                        "type": "ForEach",
+                        "dependsOn": [
+                            {
+                                "activity": "Lookup_Control_Table",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "userProperties": [],
+                        "typeProperties": {
+                            "items": {
+                                "value": "@activity('Lookup_Control_Table').output.value",
+                                "type": "Expression"
+                            },
+                            "isSequential": true,
+                            "activities": [
+                                {
+                                    "name": "If Condition1",
+                                    "type": "IfCondition",
+                                    "dependsOn": [],
+                                    "userProperties": [],
+                                    "typeProperties": {
+                                        "expression": {
+                                            "value": "@equals(toLower(item().load_type), 'incremental')",
+                                            "type": "Expression"
+                                        },
+                                        "ifFalseActivities": [
+                                            {
+                                                "name": "Delete_Full_Snapshot",
+                                                "type": "Delete",
+                                                "dependsOn": [],
+                                                "policy": {
+                                                    "timeout": "0.12:00:00",
+                                                    "retry": 0,
+                                                    "retryIntervalInSeconds": 30,
+                                                    "secureOutput": false,
+                                                    "secureInput": false
+                                                },
+                                                "userProperties": [],
+                                                "typeProperties": {
+                                                    "dataset": {
+                                                        "referenceName": "ds_adls_bronze_parquet",
+                                                        "type": "DatasetReference",
+                                                        "parameters": {
+                                                            "table_name": "@item().table_name",
+                                                            "folder_path": "@concat('bronze/', item().table_name)"
+                                                        }
+                                                    },
+                                                    "logStorageSettings": {
+                                                        "linkedServiceName": {
+                                                            "referenceName": "ls_adls_atliq",
+                                                            "type": "LinkedServiceReference"
+                                                        }
+                                                    },
+                                                    "enableLogging": true,
+                                                    "storeSettings": {
+                                                        "type": "AzureBlobFSReadSettings",
+                                                        "recursive": true,
+                                                        "enablePartitionDiscovery": false
+                                                    }
+                                                }
+                                            },
+                                            {
+                                                "name": "Copy_Full_Table",
+                                                "type": "Copy",
+                                                "dependsOn": [
+                                                    {
+                                                        "activity": "Delete_Full_Snapshot",
+                                                        "dependencyConditions": [
+                                                            "Succeeded"
+                                                        ]
+                                                    }
+                                                ],
+                                                "policy": {
+                                                    "timeout": "0.12:00:00",
+                                                    "retry": 0,
+                                                    "retryIntervalInSeconds": 30,
+                                                    "secureOutput": false,
+                                                    "secureInput": false
+                                                },
+                                                "userProperties": [],
+                                                "typeProperties": {
+                                                    "source": {
+                                                        "type": "AzureSqlSource",
+                                                        "queryTimeout": "02:00:00",
+                                                        "partitionOption": "None"
+                                                    },
+                                                    "sink": {
+                                                        "type": "ParquetSink",
+                                                        "storeSettings": {
+                                                            "type": "AzureBlobFSWriteSettings"
+                                                        },
+                                                        "formatSettings": {
+                                                            "type": "ParquetWriteSettings"
+                                                        }
+                                                    },
+                                                    "enableStaging": false,
+                                                    "translator": {
+                                                        "type": "TabularTranslator",
+                                                        "typeConversion": true,
+                                                        "typeConversionSettings": {
+                                                            "allowDataTruncation": true,
+                                                            "treatBooleanAsNumber": false
+                                                        }
+                                                    }
+                                                },
+                                                "inputs": [
+                                                    {
+                                                        "referenceName": "ds_sql_source",
+                                                        "type": "DatasetReference",
+                                                        "parameters": {
+                                                            "source_schema": "@item().source_schema",
+                                                            "table_name": "@item().table_name"
+                                                        }
+                                                    }
+                                                ],
+                                                "outputs": [
+                                                    {
+                                                        "referenceName": "ds_adls_bronze_parquet",
+                                                        "type": "DatasetReference",
+                                                        "parameters": {
+                                                            "table_name": "@item().table_name",
+                                                            "folder_path": "@concat('bronze/', item().table_name)"
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        ],
+                                        "ifTrueActivities": [
+                                            {
+                                                "name": "Delete_Current_Batch",
+                                                "type": "Delete",
+                                                "dependsOn": [],
+                                                "policy": {
+                                                    "timeout": "0.12:00:00",
+                                                    "retry": 0,
+                                                    "retryIntervalInSeconds": 30,
+                                                    "secureOutput": false,
+                                                    "secureInput": false
+                                                },
+                                                "userProperties": [],
+                                                "typeProperties": {
+                                                    "dataset": {
+                                                        "referenceName": "ds_adls_bronze_parquet",
+                                                        "type": "DatasetReference",
+                                                        "parameters": {
+                                                            "table_name": "@item().table_name",
+                                                            "folder_path": {
+                                                                "value": "@concat(\n    'bronze/',\n    item().table_name,\n    '/ingest_date=',\n    formatDateTime(variables('run_start_at'),'yyyy-MM-dd')\n)",
+                                                                "type": "Expression"
+                                                            }
+                                                        }
+                                                    },
+                                                    "logStorageSettings": {
+                                                        "linkedServiceName": {
+                                                            "referenceName": "ls_adls_atliq",
+                                                            "type": "LinkedServiceReference"
+                                                        }
+                                                    },
+                                                    "enableLogging": true,
+                                                    "storeSettings": {
+                                                        "type": "AzureBlobFSReadSettings",
+                                                        "recursive": true,
+                                                        "enablePartitionDiscovery": false
+                                                    }
+                                                }
+                                            },
+                                            {
+                                                "name": "Copy_Incremental_Table",
+                                                "type": "Copy",
+                                                "dependsOn": [
+                                                    {
+                                                        "activity": "Delete_Current_Batch",
+                                                        "dependencyConditions": [
+                                                            "Succeeded"
+                                                        ]
+                                                    }
+                                                ],
+                                                "policy": {
+                                                    "timeout": "0.12:00:00",
+                                                    "retry": 0,
+                                                    "retryIntervalInSeconds": 30,
+                                                    "secureOutput": false,
+                                                    "secureInput": false
+                                                },
+                                                "userProperties": [],
+                                                "typeProperties": {
+                                                    "source": {
+                                                        "type": "AzureSqlSource",
+                                                        "sqlReaderQuery": {
+                                                            "value": "@concat(\n    'SELECT * FROM [',\n    item().source_schema,\n    '].[', \n    item().table_name,\n    '] WHERE [',\n    item().watermark_column,\n    '] > ''',\n    item().last_loaded_at,\n    ''''\n)",
+                                                            "type": "Expression"
+                                                        },
+                                                        "queryTimeout": "02:00:00",
+                                                        "partitionOption": "None"
+                                                    },
+                                                    "sink": {
+                                                        "type": "ParquetSink",
+                                                        "storeSettings": {
+                                                            "type": "AzureBlobFSWriteSettings"
+                                                        },
+                                                        "formatSettings": {
+                                                            "type": "ParquetWriteSettings"
+                                                        }
+                                                    },
+                                                    "enableStaging": false,
+                                                    "translator": {
+                                                        "type": "TabularTranslator",
+                                                        "typeConversion": true,
+                                                        "typeConversionSettings": {
+                                                            "allowDataTruncation": true,
+                                                            "treatBooleanAsNumber": false
+                                                        }
+                                                    }
+                                                },
+                                                "inputs": [
+                                                    {
+                                                        "referenceName": "ds_sql_source",
+                                                        "type": "DatasetReference",
+                                                        "parameters": {
+                                                            "source_schema": "@item().source_schema",
+                                                            "table_name": "@item().table_name"
+                                                        }
+                                                    }
+                                                ],
+                                                "outputs": [
+                                                    {
+                                                        "referenceName": "ds_adls_bronze_parquet",
+                                                        "type": "DatasetReference",
+                                                        "parameters": {
+                                                            "table_name": "@item().table_name",
+                                                            "folder_path": "@concat(     'bronze/',     item().table_name,     '/ingest_date=',     formatDateTime(variables('run_start_at'),'yyyy-MM-dd') )"
+                                                        }
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "name": "Update_Watermark",
+                                                "type": "SqlServerStoredProcedure",
+                                                "dependsOn": [
+                                                    {
+                                                        "activity": "Copy_Incremental_Table",
+                                                        "dependencyConditions": [
+                                                            "Succeeded"
+                                                        ]
+                                                    }
+                                                ],
+                                                "policy": {
+                                                    "timeout": "0.12:00:00",
+                                                    "retry": 0,
+                                                    "retryIntervalInSeconds": 30,
+                                                    "secureOutput": false,
+                                                    "secureInput": false
+                                                },
+                                                "userProperties": [],
+                                                "typeProperties": {
+                                                    "storedProcedureName": "[[etl].[usp_update_watermark]",
+                                                    "storedProcedureParameters": {
+                                                        "run_start_at": {
+                                                            "value": {
+                                                                "value": "@variables('run_start_at')",
+                                                                "type": "Expression"
+                                                            },
+                                                            "type": "DateTime"
+                                                        },
+                                                        "table_name": {
+                                                            "value": {
+                                                                "value": "@item().table_name",
+                                                                "type": "Expression"
+                                                            },
+                                                            "type": "String"
+                                                        }
+                                                    }
+                                                },
+                                                "linkedServiceName": {
+                                                    "referenceName": "ls_azuresql_atliq",
+                                                    "type": "LinkedServiceReference"
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "name": "Delete_Supplier_Bronze",
+                        "type": "Delete",
+                        "dependsOn": [
+                            {
+                                "activity": "ForEach_Control_Rows",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "policy": {
+                            "timeout": "0.12:00:00",
+                            "retry": 0,
+                            "retryIntervalInSeconds": 30,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "dataset": {
+                                "referenceName": "ds_adls_bronze_parquet",
+                                "type": "DatasetReference",
+                                "parameters": {
+                                    "table_name": "supplier_price_list",
+                                    "folder_path": "bronze/supplier_price_list"
+                                }
+                            },
+                            "logStorageSettings": {
+                                "linkedServiceName": {
+                                    "referenceName": "ls_adls_atliq",
+                                    "type": "LinkedServiceReference"
+                                }
+                            },
+                            "enableLogging": true,
+                            "storeSettings": {
+                                "type": "AzureBlobFSReadSettings",
+                                "recursive": true,
+                                "enablePartitionDiscovery": false
+                            }
+                        }
+                    },
+                    {
+                        "name": "Copy_Supplier_CSV",
+                        "type": "Copy",
+                        "dependsOn": [
+                            {
+                                "activity": "Delete_Supplier_Bronze",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "policy": {
+                            "timeout": "0.12:00:00",
+                            "retry": 0,
+                            "retryIntervalInSeconds": 30,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "source": {
+                                "type": "DelimitedTextSource",
+                                "storeSettings": {
+                                    "type": "AzureBlobFSReadSettings",
+                                    "recursive": true,
+                                    "enablePartitionDiscovery": false
+                                },
+                                "formatSettings": {
+                                    "type": "DelimitedTextReadSettings"
+                                }
+                            },
+                            "sink": {
+                                "type": "ParquetSink",
+                                "storeSettings": {
+                                    "type": "AzureBlobFSWriteSettings"
+                                },
+                                "formatSettings": {
+                                    "type": "ParquetWriteSettings"
+                                }
+                            },
+                            "enableStaging": false,
+                            "translator": {
+                                "type": "TabularTranslator",
+                                "typeConversion": true,
+                                "typeConversionSettings": {
+                                    "allowDataTruncation": true,
+                                    "treatBooleanAsNumber": false
+                                }
+                            }
+                        },
+                        "inputs": [
+                            {
+                                "referenceName": "ds_adls_csv_source",
+                                "type": "DatasetReference",
+                                "parameters": {
+                                    "file_name": "supplier_price_list.csv"
+                                }
+                            }
+                        ],
+                        "outputs": [
+                            {
+                                "referenceName": "ds_adls_bronze_parquet",
+                                "type": "DatasetReference",
+                                "parameters": {
+                                    "table_name": "supplier_price_list",
+                                    "folder_path": "bronze/supplier_price_list"
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "name": "Delete_Marketing_Bronze",
+                        "type": "Delete",
+                        "dependsOn": [
+                            {
+                                "activity": "Copy_Supplier_CSV",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "policy": {
+                            "timeout": "0.12:00:00",
+                            "retry": 0,
+                            "retryIntervalInSeconds": 30,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "dataset": {
+                                "referenceName": "ds_adls_bronze_parquet",
+                                "type": "DatasetReference",
+                                "parameters": {
+                                    "table_name": "marketing_spend",
+                                    "folder_path": "bronze/marketing_spend"
+                                }
+                            },
+                            "logStorageSettings": {
+                                "linkedServiceName": {
+                                    "referenceName": "ls_adls_atliq",
+                                    "type": "LinkedServiceReference"
+                                }
+                            },
+                            "enableLogging": true,
+                            "storeSettings": {
+                                "type": "AzureBlobFSReadSettings",
+                                "recursive": true,
+                                "enablePartitionDiscovery": false
+                            }
+                        }
+                    },
+                    {
+                        "name": "Copy_Marketing_CSV",
+                        "type": "Copy",
+                        "dependsOn": [
+                            {
+                                "activity": "Delete_Marketing_Bronze",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "policy": {
+                            "timeout": "0.12:00:00",
+                            "retry": 0,
+                            "retryIntervalInSeconds": 30,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "source": {
+                                "type": "DelimitedTextSource",
+                                "storeSettings": {
+                                    "type": "AzureBlobFSReadSettings",
+                                    "recursive": true,
+                                    "enablePartitionDiscovery": false
+                                },
+                                "formatSettings": {
+                                    "type": "DelimitedTextReadSettings"
+                                }
+                            },
+                            "sink": {
+                                "type": "ParquetSink",
+                                "storeSettings": {
+                                    "type": "AzureBlobFSWriteSettings"
+                                },
+                                "formatSettings": {
+                                    "type": "ParquetWriteSettings"
+                                }
+                            },
+                            "enableStaging": false,
+                            "translator": {
+                                "type": "TabularTranslator",
+                                "typeConversion": true,
+                                "typeConversionSettings": {
+                                    "allowDataTruncation": true,
+                                    "treatBooleanAsNumber": false
+                                }
+                            }
+                        },
+                        "inputs": [
+                            {
+                                "referenceName": "ds_adls_csv_source",
+                                "type": "DatasetReference",
+                                "parameters": {
+                                    "file_name": "marketing_spend.csv"
+                                }
+                            }
+                        ],
+                        "outputs": [
+                            {
+                                "referenceName": "ds_adls_bronze_parquet",
+                                "type": "DatasetReference",
+                                "parameters": {
+                                    "table_name": "marketing_spend",
+                                    "folder_path": "bronze/marketing_spend"
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "name": "job_atliq_silver",
+                        "type": "DatabricksJob",
+                        "dependsOn": [
+                            {
+                                "activity": "Copy_Marketing_CSV",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "policy": {
+                            "timeout": "0.12:00:00",
+                            "retry": 0,
+                            "retryIntervalInSeconds": 30,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "jobId": "818762846714781",
+                            "jobParameters": {
+                                "run_date": {
+                                    "value": "@formatDateTime(\n    variables('run_start_at'),\n    'yyyy-MM-dd'\n)",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        "linkedServiceName": {
+                            "referenceName": "ls_databricks_atliq",
+                            "type": "LinkedServiceReference"
+                        }
+                    }
+                ],
+                "policy": {
+                    "elapsedTimeMetric": {}
+                },
+                "variables": {
+                    "run_start_at": {
+                        "type": "String"
+                    }
+                },
+                "annotations": [],
+                "lastPublishTime": "2026-08-17T16:21:23Z"
+            },
+            "dependsOn": [
+                "[concat(variables('factoryId'), '/datasets/ds_sql_source')]",
+                "[concat(variables('factoryId'), '/datasets/ds_adls_bronze_parquet')]",
+                "[concat(variables('factoryId'), '/datasets/ds_adls_csv_source')]",
+                "[concat(variables('factoryId'), '/linkedServices/ls_databricks_atliq')]",
+                "[concat(variables('factoryId'), '/linkedServices/ls_adls_atliq')]",
+                "[concat(variables('factoryId'), '/linkedServices/ls_azuresql_atliq')]"
+            ]
+        },
+        {
+            "name": "[concat(parameters('factoryName'), '/ds_sql_source')]",
+            "type": "Microsoft.DataFactory/factories/datasets",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "linkedServiceName": {
+                    "referenceName": "ls_azuresql_atliq",
+                    "type": "LinkedServiceReference"
+                },
+                "parameters": {
+                    "source_schema": {
+                        "type": "string",
+                        "defaultValue": "dbo"
+                    },
+                    "table_name": {
+                        "type": "string",
+                        "defaultValue": "customers"
+                    }
+                },
+                "annotations": [],
+                "type": "AzureSqlTable",
+                "schema": [],
+                "typeProperties": {
+                    "schema": {
+                        "value": "@dataset().source_schema",
+                        "type": "Expression"
+                    },
+                    "table": {
+                        "value": "@dataset().table_name",
+                        "type": "Expression"
+                    }
+                }
+            },
+            "dependsOn": [
+                "[concat(variables('factoryId'), '/linkedServices/ls_azuresql_atliq')]"
+            ]
+        },
+        {
+            "name": "[concat(parameters('factoryName'), '/ds_adls_bronze_parquet')]",
+            "type": "Microsoft.DataFactory/factories/datasets",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "linkedServiceName": {
+                    "referenceName": "ls_adls_atliq",
+                    "type": "LinkedServiceReference"
+                },
+                "parameters": {
+                    "table_name": {
+                        "type": "string",
+                        "defaultValue": "customers"
+                    },
+                    "folder_path": {
+                        "type": "string",
+                        "defaultValue": "bronze/customers"
+                    }
+                },
+                "annotations": [],
+                "type": "Parquet",
+                "typeProperties": {
+                    "location": {
+                        "type": "AzureBlobFSLocation",
+                        "folderPath": {
+                            "value": "@dataset().folder_path",
+                            "type": "Expression"
+                        },
+                        "fileSystem": "atliqlakehouse"
+                    },
+                    "compressionCodec": "snappy"
+                },
+                "schema": []
+            },
+            "dependsOn": [
+                "[concat(variables('factoryId'), '/linkedServices/ls_adls_atliq')]"
+            ]
+        },
+        {
+            "name": "[concat(parameters('factoryName'), '/ds_adls_csv_source')]",
+            "type": "Microsoft.DataFactory/factories/datasets",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "linkedServiceName": {
+                    "referenceName": "ls_adls_atliq",
+                    "type": "LinkedServiceReference"
+                },
+                "parameters": {
+                    "file_name": {
+                        "type": "string",
+                        "defaultValue": "supplier_price_list.csv"
+                    }
+                },
+                "annotations": [],
+                "type": "DelimitedText",
+                "typeProperties": {
+                    "location": {
+                        "type": "AzureBlobFSLocation",
+                        "fileName": {
+                            "value": "@dataset().file_name",
+                            "type": "Expression"
+                        },
+                        "folderPath": "source_files",
+                        "fileSystem": "atliqlakehouse"
+                    },
+                    "columnDelimiter": ",",
+                    "escapeChar": "\\",
+                    "firstRowAsHeader": true,
+                    "quoteChar": "\""
+                },
+                "schema": []
+            },
+            "dependsOn": [
+                "[concat(variables('factoryId'), '/linkedServices/ls_adls_atliq')]"
+            ]
+        },
+        {
+            "name": "[concat(parameters('factoryName'), '/ls_azuresql_atliq')]",
+            "type": "Microsoft.DataFactory/factories/linkedServices",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "annotations": [],
+                "type": "AzureSqlDatabase",
+                "typeProperties": {
+                    "server": "[parameters('ls_azuresql_atliq_properties_typeProperties_server')]",
+                    "database": "[parameters('ls_azuresql_atliq_properties_typeProperties_database')]",
+                    "encrypt": "mandatory",
+                    "trustServerCertificate": false,
+                    "authenticationType": "SQL",
+                    "userName": "[parameters('ls_azuresql_atliq_properties_typeProperties_userName')]",
+                    "password": {
+                        "type": "SecureString",
+                        "value": "[parameters('ls_azuresql_atliq_password')]"
+                    }
+                }
+            },
+            "dependsOn": []
+        },
+        {
+            "name": "[concat(parameters('factoryName'), '/ls_adls_atliq')]",
+            "type": "Microsoft.DataFactory/factories/linkedServices",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "annotations": [],
+                "type": "AzureBlobFS",
+                "typeProperties": {
+                    "url": "[parameters('ls_adls_atliq_properties_typeProperties_url')]"
+                }
+            },
+            "dependsOn": []
+        },
+        {
+            "name": "[concat(parameters('factoryName'), '/ls_databricks_atliq')]",
+            "type": "Microsoft.DataFactory/factories/linkedServices",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "annotations": [],
+                "type": "AzureDatabricks",
+                "typeProperties": {
+                    "domain": "https://adb-7405612079288980.0.azuredatabricks.net",
+                    "authentication": "MSI",
+                    "workspaceResourceId": "/subscriptions/770f07b6-2eba-43b7-9353-6646e9c5720c/resourceGroups/rg-atliq-capstone/providers/Microsoft.Databricks/workspaces/abd-atliq-capstone"
+                }
+            },
+            "dependsOn": []
+        },
+        {
+            "name": "[concat(parameters('factoryName'), '/trg_atliq_nightly')]",
+            "type": "Microsoft.DataFactory/factories/triggers",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "annotations": [],
+                "runtimeState": "Started",
+                "pipelines": [
+                    {
+                        "pipelineReference": {
+                            "referenceName": "pl_bronze_metadata_ingestion",
+                            "type": "PipelineReference"
+                        },
+                        "parameters": {}
+                    }
+                ],
+                "type": "ScheduleTrigger",
+                "typeProperties": {
+                    "recurrence": {
+                        "frequency": "Day",
+                        "interval": 1,
+                        "startTime": "2026-08-18T01:00:00",
+                        "timeZone": "E. South America Standard Time",
+                        "schedule": {}
+                    }
+                }
+            },
+            "dependsOn": [
+                "[concat(variables('factoryId'), '/pipelines/pl_bronze_metadata_ingestion')]"
+            ]
+        }
+    ]
+}
