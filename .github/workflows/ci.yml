@@ -1,0 +1,33 @@
+name: dbt-ci
+
+on:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.0"
+
+      - name: Install dbt-databricks
+        run: pip install dbt-databricks==1.12.4
+
+      - name: Install dbt dependencies
+        run: dbt deps --profiles-dir .
+        working-directory: Phase_1_Capstone_Project/atliq_gold
+
+      - name: Build and test dbt
+        run: dbt build --target ci --profiles-dir .
+        working-directory: Phase_1_Capstone_Project/atliq_gold

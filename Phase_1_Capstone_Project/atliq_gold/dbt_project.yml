@@ -34,4 +34,4 @@ models:
     gold:
       +materialized: table
       +file_format: delta
-      +location_root: "abfss://atliqlakehouse@atliqstorage.dfs.core.windows.net/gold"
+      +location_root: "abfss://atliqlakehouse@atliqstorage.dfs.core.windows.net/{{ target.schema }}"
