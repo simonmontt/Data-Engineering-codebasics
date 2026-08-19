@@ -10,5 +10,3 @@ Tests include:
 The GitHub Actions CI workflow executes:
 
 `dbt build --target ci`
-
-on every pull request. The final CI run completed successfully with no test errors.
